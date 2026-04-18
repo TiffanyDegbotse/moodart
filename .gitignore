@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.pth
+*.pkl
+node_modules/
+build/
+.env
+.env.local
+data/raw/
+data/processed/
+*.zip
+*.csv
+models/style_weights/

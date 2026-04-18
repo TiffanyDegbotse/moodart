@@ -1,0 +1,34 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink: #0e0c0a;
+  --paper: #f5f0e8;
+  --canvas: #ede8dc;
+  --gold: #c9a84c;
+  --gold-light: #e8c97a;
+  --rust: #b85c2a;
+  --sage: #6b7c5e;
+  --slate: #4a5568;
+  --cream: #faf7f0;
+  --shadow: rgba(14, 12, 10, 0.15);
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'Cormorant Garamond', Georgia, serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--ink);
+  color: var(--paper);
+  min-height: 100vh;
+  overflow-x: hidden;
+  cursor: crosshair;
+}
+
+::selection { background: var(--gold); color: var(--ink); }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--ink); }
+::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 3px; }
