@@ -235,11 +235,7 @@ def apply_fast_nst(content, style, strength=1.0):
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/api/health')
 def health():
-    return jsonify({
-        'status': 'ok',
-        'classifier': mood_classifier is not None,
-        'style_model': style_model is not None
-    })
+    return jsonify({'status': 'ok'}), 200
 
 @app.route('/api/styles')
 def get_styles():
