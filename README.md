@@ -145,4 +145,3 @@ This project follows git best practices:
 - `main` — production-ready code only
 - `develop` — integration branch
 - `feature/*` — individual features
-- All merges via Pull Requests, no direct commits to main
