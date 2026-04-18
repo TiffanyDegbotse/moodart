@@ -146,5 +146,3 @@ This project follows git best practices:
 - `develop` — integration branch
 - `feature/*` — individual features
 - All merges via Pull Requests, no direct commits to main
-=======
-# moodart
