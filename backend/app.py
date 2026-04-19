@@ -12,7 +12,7 @@ import io
 import base64
 import time
 import logging
-
+import requests
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -27,6 +27,8 @@ CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MAX_IMAGE_SIZE = (1024, 1024)
+HF_TOKEN = os.environ.get('HF_TOKEN', '')
+HF_API_URL = 'https://api-inference.huggingface.co/models/tiffany101/modart_vgg'
 
 STYLES = {
     'monet':     {'name': 'Monet',     'description': 'Water Lilies — soft, impressionist',    'mood': 'happy'},
@@ -49,70 +51,11 @@ MOOD_DESCRIPTIONS = {
     'dramatic':    'Your image holds an intense, powerful presence.',
 }
 
-# ── Model loading ─────────────────────────────────────────────────────────────
-mood_classifier = None
-style_model = None
-
-def download_model_if_needed():
-    """Download VGG model from Hugging Face if not present."""
-    import requests
-    model_path = 'models/classifier/vgg_mood_best.pth'
-    if os.path.exists(model_path):
-        logger.info('Model already exists, skipping download.')
-        return
-    os.makedirs('models/classifier', exist_ok=True)
-    url = 'https://huggingface.co/tiffany101/modart_vgg/resolve/main/vgg_mood_best.pth'
-    logger.info('Downloading VGG model from Hugging Face...')
-    r = requests.get(url, stream=True)
-    r.raise_for_status()
-    with open(model_path, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            f.write(chunk)
-    logger.info('Model downloaded successfully.')
-
-def load_models():
-    global mood_classifier, style_model
-
-    try:
-        import torch
-        import torchvision.models as tv_models
-        import torch.nn as nn
-
-        class MoodVGG(nn.Module):
-            def __init__(self, num_classes=5, dropout=0.5):
-                super().__init__()
-                # Use weights=None to avoid downloading pretrained weights
-                vgg = tv_models.vgg16(weights=None)
-                self.features = vgg.features
-                self.avgpool = vgg.avgpool
-                self.classifier = nn.Sequential(
-                    nn.Linear(512 * 7 * 7, 4096), nn.ReLU(inplace=True), nn.Dropout(dropout),
-                    nn.Linear(4096, 1024), nn.ReLU(inplace=True), nn.Dropout(dropout),
-                    nn.Linear(1024, num_classes)
-                )
-            def forward(self, x):
-                x = self.features(x)
-                x = self.avgpool(x)
-                return self.classifier(torch.flatten(x, 1))
-
-        device = torch.device('cpu')  # force CPU
-        model_path = 'models/classifier/vgg_mood_best.pth'
-        if os.path.exists(model_path):
-            model = MoodVGG()
-            # Load with map_location to CPU and weights only
-            state_dict = torch.load(model_path, map_location='cpu', weights_only=True)
-            model.load_state_dict(state_dict)
-            model.eval()
-            mood_classifier = {'model': model, 'device': device}
-            logger.info('Mood classifier loaded.')
-        else:
-            logger.warning('No mood classifier found — using placeholder.')
-    except Exception as e:
-        logger.warning(f'Could not load mood classifier: {e}')
-
+CLASSES = ['calm', 'dramatic', 'energetic', 'happy', 'melancholic']
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def decode_image(data_url_or_b64):
+    """Decode base64 or data URL to PIL image."""
     if ',' in data_url_or_b64:
         data_url_or_b64 = data_url_or_b64.split(',')[1]
     img_bytes = base64.b64decode(data_url_or_b64)
@@ -121,11 +64,13 @@ def decode_image(data_url_or_b64):
     return img
 
 def encode_image(img):
+    """Encode PIL image to base64 PNG."""
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return base64.b64encode(buf.getvalue()).decode('utf-8')
 
 def predict_mood_placeholder(img):
+    """Rule-based mood prediction using color statistics."""
     arr = np.array(img).astype(np.float32)
     brightness = arr.mean() / 255.0
     saturation = arr.std() / 255.0
@@ -147,25 +92,55 @@ def predict_mood_placeholder(img):
     scores = {k: round(v/total, 3) for k, v in scores.items()}
     return {'mood': mood, 'confidence': scores[mood], 'scores': scores}
 
-def predict_mood_vgg(img):
-    import torch
-    import torchvision.transforms as T
-    CLASSES = ['calm', 'dramatic', 'energetic', 'happy', 'melancholic']
-    transform = T.Compose([
-        T.Resize((224, 224)), T.ToTensor(),
-        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
-    tensor = transform(img).unsqueeze(0).to(mood_classifier['device'])
-    with torch.no_grad():
-        probs = torch.softmax(mood_classifier['model'](tensor), dim=1).squeeze().cpu().numpy()
-    pred_idx = probs.argmax()
+def predict_mood_hf(img):
+    """
+    Predict mood using Hugging Face Inference API.
+    Sends image to hosted VGGNet model — no local memory needed.
+    """
+    # Convert image to bytes
+    buf = io.BytesIO()
+    img.resize((224, 224)).save(buf, format='JPEG')
+    img_bytes = buf.getvalue()
+
+    response = requests.post(
+        HF_API_URL,
+        headers={'Authorization': f'Bearer {HF_TOKEN}'},
+        data=img_bytes,
+        timeout=30
+    )
+
+    if response.status_code == 503:
+        # Model is loading on HF servers — use placeholder
+        logger.warning('HF model loading, using placeholder')
+        return predict_mood_placeholder(img)
+
+    if response.status_code != 200:
+        raise Exception(f'HF API error {response.status_code}: {response.text}')
+
+    result = response.json()
+
+    # HF returns list of {label, score} for image classification
+    if isinstance(result, list):
+        scores = {item['label']: round(item['score'], 3) for item in result}
+        mood = max(scores, key=scores.get)
+        # Map HF labels to our mood classes if needed
+        mood = mood.lower()
+        if mood not in CLASSES:
+            # fallback — find closest
+            mood = CLASSES[0]
+    else:
+        # Unexpected format — use placeholder
+        logger.warning(f'Unexpected HF response: {result}')
+        return predict_mood_placeholder(img)
+
     return {
-        'mood': CLASSES[pred_idx],
-        'confidence': round(float(probs[pred_idx]), 3),
-        'scores': {c: round(float(p), 3) for c, p in zip(CLASSES, probs)}
+        'mood': mood,
+        'confidence': round(scores.get(mood, 0.5), 3),
+        'scores': scores
     }
 
 def apply_naive_lut(content, style, strength=1.0):
+    """Naive baseline: channel statistics matching."""
     c = np.array(content).astype(np.float32)
     s = np.array(style).astype(np.float32)
     out = np.zeros_like(c)
@@ -197,7 +172,6 @@ def apply_kmeans_palette(content, style, n_colors=16, strength=1.0):
 
     dists = pairwise_distances(c_palette, s_palette)
     mapping = dists.argmin(axis=1)
-
     pixel_dists = pairwise_distances(c_pixels, c_palette)
     assignments = pixel_dists.argmin(axis=1)
 
@@ -211,41 +185,14 @@ def apply_kmeans_palette(content, style, n_colors=16, strength=1.0):
     transferred = np.clip(transferred, 0, 255).astype(np.uint8).reshape(h, w, 3)
     return Image.fromarray(transferred)
 
-def apply_fast_nst(content, style, strength=1.0):
-    import tensorflow as tf
-
-    def to_tf(img, max_side=512):
-        w, h = img.size
-        scale = max(w, h) / max_side if max(w, h) > max_side else 1.0
-        if scale > 1.0:
-            img = img.resize((int(w/scale), int(h/scale)), Image.LANCZOS)
-        arr = np.array(img).astype(np.float32) / 255.0
-        return tf.convert_to_tensor(arr)[tf.newaxis, ...]
-
-    style_small = style.copy()
-    style_small.thumbnail((256, 256), Image.LANCZOS)
-    c_t = to_tf(content)
-    s_t = to_tf(style_small, max_side=256)
-
-    if strength < 1.0:
-        gray = Image.new('RGB', style_small.size, (128, 128, 128))
-        s_t = to_tf(gray, max_side=256) * (1.0 - strength) + s_t * strength
-
-    out = style_model(c_t, s_t)[0]
-    out = tf.squeeze(out, 0)
-    out = tf.clip_by_value(out, 0.0, 1.0)
-    return Image.fromarray((out.numpy() * 255).astype(np.uint8))
-
-# Download model and load at startup
-download_model_if_needed()
-load_models()
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/api/health')
 def health():
-    import os
-    files = os.listdir('/app') if os.path.exists('/app') else 'no /app'
-    return jsonify({'status': 'ok', 'app_contents': files})
+    return jsonify({
+        'status': 'ok',
+        'hf_token_set': bool(HF_TOKEN),
+    })
 
 @app.route('/api/styles')
 def get_styles():
@@ -253,6 +200,7 @@ def get_styles():
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
+    """Predict mood from uploaded image using HF Inference API."""
     try:
         data = request.get_json()
         if not data or 'image' not in data:
@@ -260,18 +208,30 @@ def analyze():
 
         img = decode_image(data['image'])
         t0 = time.time()
-        result = predict_mood_vgg(img) if mood_classifier else predict_mood_placeholder(img)
+
+        if HF_TOKEN:
+            try:
+                result = predict_mood_hf(img)
+                model_name = 'VGGNet (HF Inference)'
+            except Exception as e:
+                logger.warning(f'HF inference failed: {e}, using placeholder')
+                result = predict_mood_placeholder(img)
+                model_name = 'Color Baseline (placeholder)'
+        else:
+            result = predict_mood_placeholder(img)
+            model_name = 'Color Baseline (placeholder)'
+
         mood = result['mood']
 
         return jsonify({
             'mood': mood,
             'confidence': result['confidence'],
             'scores': result['scores'],
-            'recommended_style': MOOD_TO_STYLE[mood],
-            'mood_description': MOOD_DESCRIPTIONS[mood],
-            'style_info': STYLES[MOOD_TO_STYLE[mood]],
+            'recommended_style': MOOD_TO_STYLE.get(mood, 'vangogh'),
+            'mood_description': MOOD_DESCRIPTIONS.get(mood, ''),
+            'style_info': STYLES[MOOD_TO_STYLE.get(mood, 'vangogh')],
             'inference_time': round(time.time() - t0, 3),
-            'model': 'VGGNet' if mood_classifier else 'Color Baseline (placeholder)'
+            'model': model_name
         })
     except Exception as e:
         logger.error(f'Analyze error: {e}')
@@ -279,6 +239,7 @@ def analyze():
 
 @app.route('/api/stylize', methods=['POST'])
 def stylize():
+    """Apply style transfer to image."""
     try:
         data = request.get_json()
         if not data or 'image' not in data:
@@ -286,34 +247,26 @@ def stylize():
 
         img = decode_image(data['image'])
         style_key = data.get('style', 'vangogh')
-        method = data.get('method', 'neural')
+        method = data.get('method', 'naive')
         strength = float(data.get('strength', 1.0))
 
         style_path = f'models/style_weights/{style_key}.jpg'
-
-        logger.info(f'CWD: {os.getcwd()}')
-        logger.info(f'Looking for: {style_path}')
-        logger.info(f'Exists: {os.path.exists(style_path)}')
-        logger.info(f'Weights folder: {os.listdir("models/style_weights") if os.path.exists("models/style_weights") else "NOT FOUND"}')
-
         if not os.path.exists(style_path):
-            return jsonify({'error': f'Style {style_key} not found at {style_path}'}), 404
+            return jsonify({'error': f'Style {style_key} not found'}), 404
 
         style_img = Image.open(style_path).convert('RGB')
         t0 = time.time()
 
-        if method == 'naive':
-            result = apply_naive_lut(img, style_img, strength)
-            model_name = 'Naive (Color LUT)'
-        elif method == 'kmeans':
+        if method == 'kmeans':
             result = apply_kmeans_palette(img, style_img, strength=strength)
             model_name = 'Classical ML (K-Means Palette)'
-        elif style_model:
-            result = apply_fast_nst(img, style_img, strength)
-            model_name = 'Deep Learning (Fast NST)'
-        else:
+        elif method == 'naive':
             result = apply_naive_lut(img, style_img, strength)
-            model_name = 'Naive (Color LUT) — NST not loaded'
+            model_name = 'Naive (Color LUT)'
+        else:
+            # Neural — fall back to naive since tensorflow not installed
+            result = apply_naive_lut(img, style_img, strength)
+            model_name = 'Naive (Color LUT) — Neural requires GPU deployment'
 
         return jsonify({
             'stylized_image': encode_image(result),
@@ -329,7 +282,5 @@ def stylize():
 
 
 if __name__ == '__main__':
-    download_model_if_needed()
-    load_models()
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)
