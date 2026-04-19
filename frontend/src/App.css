@@ -221,9 +221,7 @@
 }
 
 /* ── Image preview ──────────────────────────────────────────────────────── */
-.image-preview-wrap {
-  position: relative;
-}
+.image-preview-wrap { position: relative; }
 
 .image-preview {
   width: 100%;
@@ -266,9 +264,7 @@
 .mood-badge::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+  left: 0; top: 0; bottom: 0;
   width: 3px;
   background: var(--mood-color, var(--gold));
 }
@@ -335,10 +331,7 @@
   overflow: hidden;
 }
 
-.mood-bar-fill {
-  height: 100%;
-  border-radius: 2px;
-}
+.mood-bar-fill { height: 100%; border-radius: 2px; }
 
 .mood-bar-pct {
   font-family: var(--font-mono);
@@ -381,9 +374,7 @@
   box-shadow: 0 0 0 1px var(--style-color);
 }
 
-.style-card.recommended {
-  border-color: var(--gold);
-}
+.style-card.recommended { border-color: var(--gold); }
 
 .rec-badge {
   position: absolute;
@@ -468,6 +459,19 @@
   background: rgba(201, 168, 76, 0.08);
 }
 
+/* ── Neural note ────────────────────────────────────────────────────────── */
+.neural-note {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--gold);
+  background: rgba(201, 168, 76, 0.08);
+  border: 1px solid rgba(201, 168, 76, 0.2);
+  border-radius: 2px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  letter-spacing: 0.04em;
+}
+
 /* ── Strength slider ────────────────────────────────────────────────────── */
 .strength-slider {
   flex: 1;
@@ -510,6 +514,59 @@
 .stylize-btn:hover { background: var(--gold-light); }
 .stylize-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ── Neural gallery ─────────────────────────────────────────────────────── */
+.neural-gallery { margin-bottom: 1rem; }
+
+.neural-gallery-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: rgba(245, 240, 232, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.75rem;
+}
+
+.neural-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.neural-gallery-item {
+  cursor: pointer;
+  border: 1px solid rgba(245, 240, 232, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.neural-gallery-item:hover { border-color: var(--gold); }
+
+.neural-gallery-item.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+
+.neural-gallery-item img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.neural-gallery-item span {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: rgba(245, 240, 232, 0.5);
+  text-align: center;
+  padding: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 /* ── Result panel ───────────────────────────────────────────────────────── */
 .result-panel {
   background: rgba(245, 240, 232, 0.03);
@@ -542,10 +599,7 @@
   transition: all 0.2s;
 }
 
-.result-tab.active {
-  border-color: var(--gold);
-  color: var(--gold);
-}
+.result-tab.active { border-color: var(--gold); color: var(--gold); }
 
 .result-meta { display: flex; gap: 0.4rem; }
 
@@ -570,9 +624,7 @@
 .result-images.view-split { grid-template-columns: 1fr 1fr; }
 .result-images.view-original, .result-images.view-stylized { grid-template-columns: 1fr; }
 
-.result-img-wrap {
-  position: relative;
-}
+.result-img-wrap { position: relative; }
 
 .result-img-wrap img {
   width: 100%;
@@ -714,9 +766,7 @@
   animation: spin-loader 0.8s linear infinite;
 }
 
-@keyframes spin-loader {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin-loader { to { transform: rotate(360deg); } }
 
 .loading-msg {
   font-family: var(--font-display);
@@ -764,6 +814,7 @@
 @media (max-width: 900px) {
   .content { grid-template-columns: 1fr; }
   .style-grid { grid-template-columns: repeat(3, 1fr); }
+  .neural-gallery-grid { grid-template-columns: repeat(3, 1fr); }
   .header { padding: 1.5rem; }
   .main { padding: 1.5rem; }
   .tagline { display: none; }
@@ -771,6 +822,7 @@
 
 @media (max-width: 600px) {
   .style-grid { grid-template-columns: repeat(2, 1fr); }
+  .neural-gallery-grid { grid-template-columns: repeat(2, 1fr); }
   .steps { gap: 0; }
   .step-line { width: 20px; }
 }
