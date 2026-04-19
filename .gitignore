@@ -1,7 +1,7 @@
 __pycache__/
 *.py[cod]
-*.pth
 *.pkl
+*.pth
 node_modules/
 build/
 .env
@@ -10,4 +10,3 @@ data/raw/
 data/processed/
 *.zip
 *.csv
-models/style_weights/
