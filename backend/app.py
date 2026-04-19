@@ -53,6 +53,22 @@ MOOD_DESCRIPTIONS = {
 mood_classifier = None
 style_model = None
 
+def download_model_if_needed():
+    """Download VGG model from Hugging Face if not present."""
+    model_path = 'models/classifier/vgg_mood_best.pth'
+    if os.path.exists(model_path):
+        logger.info('Model already exists, skipping download.')
+        return
+    os.makedirs('models/classifier', exist_ok=True)
+    url = 'https://huggingface.co/tiffany101/modart_vgg/resolve/main/vgg_mood_best.pth'
+    logger.info('Downloading VGG model from Hugging Face...')
+    r = requests.get(url, stream=True)
+    r.raise_for_status()
+    with open(model_path, 'wb') as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            f.write(chunk)
+    logger.info('Model downloaded successfully.')
+
 def load_models():
     global mood_classifier, style_model
 
@@ -229,6 +245,9 @@ def apply_fast_nst(content, style, strength=1.0):
     out = tf.clip_by_value(out, 0.0, 1.0)
     return Image.fromarray((out.numpy() * 255).astype(np.uint8))
 
+# Download model and load at startup
+download_model_if_needed()
+load_models()
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/api/health')
@@ -319,6 +338,7 @@ def stylize():
 
 
 if __name__ == '__main__':
+    download_model_if_needed()
     load_models()
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)
