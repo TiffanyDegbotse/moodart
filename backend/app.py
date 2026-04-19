@@ -81,7 +81,8 @@ def load_models():
         class MoodVGG(nn.Module):
             def __init__(self, num_classes=5, dropout=0.5):
                 super().__init__()
-                vgg = tv_models.vgg16(pretrained=False)
+                # Use weights=None to avoid downloading pretrained weights
+                vgg = tv_models.vgg16(weights=None)
                 self.features = vgg.features
                 self.avgpool = vgg.avgpool
                 self.classifier = nn.Sequential(
@@ -94,11 +95,13 @@ def load_models():
                 x = self.avgpool(x)
                 return self.classifier(torch.flatten(x, 1))
 
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device('cpu')  # force CPU
         model_path = 'models/classifier/vgg_mood_best.pth'
         if os.path.exists(model_path):
-            model = MoodVGG().to(device)
-            model.load_state_dict(torch.load(model_path, map_location=device))
+            model = MoodVGG()
+            # Load with map_location to CPU and weights only
+            state_dict = torch.load(model_path, map_location='cpu', weights_only=True)
+            model.load_state_dict(state_dict)
             model.eval()
             mood_classifier = {'model': model, 'device': device}
             logger.info('Mood classifier loaded.')
@@ -106,19 +109,6 @@ def load_models():
             logger.warning('No mood classifier found — using placeholder.')
     except Exception as e:
         logger.warning(f'Could not load mood classifier: {e}')
-
-    try:
-        import tensorflow_hub as hub
-        import tensorflow as tf
-
-        @tf.autograph.experimental.do_not_convert
-        def _load():
-            return hub.load('https://tfhub.dev/google/magenta/arbitrary-image-stylization-v1-256/2')
-
-        style_model = _load()
-        logger.info('Style transfer model loaded.')
-    except Exception as e:
-        logger.warning(f'Could not load style model: {e}')
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
