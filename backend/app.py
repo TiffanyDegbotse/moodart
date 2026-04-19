@@ -14,6 +14,10 @@ import time
 import logging
 import requests
 
+import numpy as np
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
