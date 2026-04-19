@@ -51,6 +51,7 @@ MOOD_DESCRIPTIONS = {
 
 # ── Model loading ─────────────────────────────────────────────────────────────
 mood_classifier = None
+style_model = None
 
 def download_model_if_needed():
     """Download VGG model from Hugging Face if not present."""
@@ -69,8 +70,10 @@ def download_model_if_needed():
     logger.info('Model downloaded successfully.')
 
 def load_models():
-    """Load VGG mood classifier."""
-    global mood_classifier
+    """Load VGG mood classifier and neural style transfer model."""
+    global mood_classifier, style_model
+
+    # Load VGG mood classifier
     try:
         import torch
         import torchvision.models as tv_models
@@ -104,6 +107,20 @@ def load_models():
             logger.warning('No mood classifier found — using placeholder.')
     except Exception as e:
         logger.warning(f'Could not load mood classifier: {e}')
+
+    # Load neural style transfer model
+    try:
+        import tensorflow_hub as hub
+        import tensorflow as tf
+
+        @tf.autograph.experimental.do_not_convert
+        def _load():
+            return hub.load('https://tfhub.dev/google/magenta/arbitrary-image-stylization-v1-256/2')
+
+        style_model = _load()
+        logger.info('Neural style transfer model loaded.')
+    except Exception as e:
+        logger.warning(f'Could not load style model: {e}')
 
 # ── Run at startup ────────────────────────────────────────────────────────────
 download_model_if_needed()
@@ -213,6 +230,33 @@ def apply_kmeans_palette(content, style, n_colors=16, strength=1.0):
     transferred = np.clip(transferred, 0, 255).astype(np.uint8).reshape(h, w, 3)
     return Image.fromarray(transferred)
 
+def apply_fast_nst(content, style, strength=1.0):
+    """Deep Learning: Fast neural style transfer via Magenta."""
+    import tensorflow as tf
+
+    def to_tf(img, max_side=512):
+        w, h = img.size
+        scale = max(w, h) / max_side if max(w, h) > max_side else 1.0
+        if scale > 1.0:
+            img = img.resize((int(w/scale), int(h/scale)), Image.LANCZOS)
+        arr = np.array(img).astype(np.float32) / 255.0
+        return tf.convert_to_tensor(arr)[tf.newaxis, ...]
+
+    style_small = style.copy()
+    style_small.thumbnail((256, 256), Image.LANCZOS)
+    c_t = to_tf(content)
+    s_t = to_tf(style_small, max_side=256)
+
+    if strength < 1.0:
+        gray = Image.new('RGB', style_small.size, (128, 128, 128))
+        s_gray = to_tf(gray, max_side=256)
+        s_t = s_gray * (1.0 - strength) + s_t * strength
+
+    out = style_model(c_t, s_t)[0]
+    out = tf.squeeze(out, 0)
+    out = tf.clip_by_value(out, 0.0, 1.0)
+    return Image.fromarray((out.numpy() * 255).astype(np.uint8))
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/api/health')
@@ -220,6 +264,7 @@ def health():
     return jsonify({
         'status': 'ok',
         'classifier': mood_classifier is not None,
+        'style_model': style_model is not None,
     })
 
 @app.route('/api/styles')
@@ -286,9 +331,12 @@ def stylize():
         elif method == 'naive':
             result = apply_naive_lut(img, style_img, strength)
             model_name = 'Naive (Color LUT)'
+        elif method == 'neural' and style_model:
+            result = apply_fast_nst(img, style_img, strength)
+            model_name = 'Deep Learning (Fast NST)'
         else:
             result = apply_naive_lut(img, style_img, strength)
-            model_name = 'Naive (Color LUT) — Neural requires GPU'
+            model_name = 'Naive (Color LUT) — Neural not available'
 
         return jsonify({
             'stylized_image': encode_image(result),
