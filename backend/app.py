@@ -13,8 +13,7 @@ import base64
 import time
 import logging
 
-# Fix working directory to project root regardless of where app.py is run from
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
