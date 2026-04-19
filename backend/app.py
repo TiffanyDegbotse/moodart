@@ -55,6 +55,7 @@ style_model = None
 
 def download_model_if_needed():
     """Download VGG model from Hugging Face if not present."""
+    import requests
     model_path = 'models/classifier/vgg_mood_best.pth'
     if os.path.exists(model_path):
         logger.info('Model already exists, skipping download.')
