@@ -13,7 +13,6 @@ import base64
 import time
 import logging
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
