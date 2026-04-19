@@ -14,14 +14,13 @@ import time
 import logging
 import requests
 
-import numpy as np
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
 import numpy as np
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,7 +54,6 @@ MOOD_DESCRIPTIONS = {
 
 # ── Model loading ─────────────────────────────────────────────────────────────
 mood_classifier = None
-style_model = None
 
 def download_model_if_needed():
     """Download VGG model from Hugging Face if not present."""
@@ -74,10 +72,8 @@ def download_model_if_needed():
     logger.info('Model downloaded successfully.')
 
 def load_models():
-    """Load VGG mood classifier and neural style transfer model."""
-    global mood_classifier, style_model
-
-    # Load VGG mood classifier
+    """Load VGG mood classifier."""
+    global mood_classifier
     try:
         import torch
         import torchvision.models as tv_models
@@ -112,27 +108,12 @@ def load_models():
     except Exception as e:
         logger.warning(f'Could not load mood classifier: {e}')
 
-    # Load neural style transfer model
-    try:
-        import tensorflow_hub as hub
-        import tensorflow as tf
-
-        @tf.autograph.experimental.do_not_convert
-        def _load():
-            return hub.load('https://tfhub.dev/google/magenta/arbitrary-image-stylization-v1-256/2')
-
-        style_model = _load()
-        logger.info('Neural style transfer model loaded.')
-    except Exception as e:
-        logger.warning(f'Could not load style model: {e}')
-
 # ── Run at startup ────────────────────────────────────────────────────────────
 download_model_if_needed()
 load_models()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def decode_image(data_url_or_b64):
-    """Decode base64 or data URL to PIL image."""
     if ',' in data_url_or_b64:
         data_url_or_b64 = data_url_or_b64.split(',')[1]
     img_bytes = base64.b64decode(data_url_or_b64)
@@ -141,17 +122,14 @@ def decode_image(data_url_or_b64):
     return img
 
 def encode_image(img):
-    """Encode PIL image to base64 PNG."""
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return base64.b64encode(buf.getvalue()).decode('utf-8')
 
 def predict_mood_placeholder(img):
-    """Rule-based mood prediction using color statistics."""
     arr = np.array(img).astype(np.float32)
     brightness = arr.mean() / 255.0
     saturation = arr.std() / 255.0
-
     if brightness > 0.6 and saturation > 0.15:
         mood = 'happy'
     elif brightness > 0.55 and saturation <= 0.15:
@@ -162,7 +140,6 @@ def predict_mood_placeholder(img):
         mood = 'energetic'
     else:
         mood = 'melancholic'
-
     scores = {m: round(np.random.uniform(0.05, 0.15), 3) for m in MOOD_TO_STYLE}
     scores[mood] = round(np.random.uniform(0.55, 0.80), 3)
     total = sum(scores.values())
@@ -170,7 +147,6 @@ def predict_mood_placeholder(img):
     return {'mood': mood, 'confidence': scores[mood], 'scores': scores}
 
 def predict_mood_vgg(img):
-    """Predict mood using local VGGNet classifier."""
     import torch
     import torchvision.transforms as T
     CLASSES = ['calm', 'dramatic', 'energetic', 'happy', 'melancholic']
@@ -189,7 +165,6 @@ def predict_mood_vgg(img):
     }
 
 def apply_naive_lut(content, style, strength=1.0):
-    """Naive baseline: channel statistics matching."""
     c = np.array(content).astype(np.float32)
     s = np.array(style).astype(np.float32)
     out = np.zeros_like(c)
@@ -201,65 +176,31 @@ def apply_naive_lut(content, style, strength=1.0):
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
 
 def apply_kmeans_palette(content, style, n_colors=16, strength=1.0):
-    """Classical ML: K-Means palette transfer."""
     from sklearn.cluster import KMeans
     from sklearn.metrics import pairwise_distances
-
     content_arr = np.array(content.convert('RGB')).astype(np.float32)
     style_arr = np.array(style.convert('RGB')).astype(np.float32)
     h, w = content_arr.shape[:2]
     c_pixels = content_arr.reshape(-1, 3)
     s_pixels = style_arr.reshape(-1, 3)
-
     c_sample = c_pixels[np.random.choice(len(c_pixels), min(5000, len(c_pixels)), replace=False)]
     s_sample = s_pixels[np.random.choice(len(s_pixels), min(5000, len(s_pixels)), replace=False)]
-
     c_kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=5).fit(c_sample)
     s_kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=5).fit(s_sample)
     c_palette = c_kmeans.cluster_centers_
     s_palette = s_kmeans.cluster_centers_
-
     dists = pairwise_distances(c_palette, s_palette)
     mapping = dists.argmin(axis=1)
     pixel_dists = pairwise_distances(c_pixels, c_palette)
     assignments = pixel_dists.argmin(axis=1)
-
     transferred = np.zeros_like(c_pixels)
     for i in range(n_colors):
         mask = assignments == i
         if mask.any():
             style_color = s_palette[mapping[i]]
             transferred[mask] = (1 - strength) * c_pixels[mask] + strength * style_color
-
     transferred = np.clip(transferred, 0, 255).astype(np.uint8).reshape(h, w, 3)
     return Image.fromarray(transferred)
-
-def apply_fast_nst(content, style, strength=1.0):
-    """Deep Learning: Fast neural style transfer via Magenta."""
-    import tensorflow as tf
-
-    def to_tf(img, max_side=512):
-        w, h = img.size
-        scale = max(w, h) / max_side if max(w, h) > max_side else 1.0
-        if scale > 1.0:
-            img = img.resize((int(w/scale), int(h/scale)), Image.LANCZOS)
-        arr = np.array(img).astype(np.float32) / 255.0
-        return tf.convert_to_tensor(arr)[tf.newaxis, ...]
-
-    style_small = style.copy()
-    style_small.thumbnail((256, 256), Image.LANCZOS)
-    c_t = to_tf(content)
-    s_t = to_tf(style_small, max_side=256)
-
-    if strength < 1.0:
-        gray = Image.new('RGB', style_small.size, (128, 128, 128))
-        s_gray = to_tf(gray, max_side=256)
-        s_t = s_gray * (1.0 - strength) + s_t * strength
-
-    out = style_model(c_t, s_t)[0]
-    out = tf.squeeze(out, 0)
-    out = tf.clip_by_value(out, 0.0, 1.0)
-    return Image.fromarray((out.numpy() * 255).astype(np.uint8))
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -268,7 +209,6 @@ def health():
     return jsonify({
         'status': 'ok',
         'classifier': mood_classifier is not None,
-        'style_model': style_model is not None,
     })
 
 @app.route('/api/styles')
@@ -277,24 +217,19 @@ def get_styles():
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
-    """Predict mood from uploaded image."""
     try:
         data = request.get_json()
         if not data or 'image' not in data:
             return jsonify({'error': 'No image provided'}), 400
-
         img = decode_image(data['image'])
         t0 = time.time()
-
         if mood_classifier:
             result = predict_mood_vgg(img)
             model_name = 'VGGNet'
         else:
             result = predict_mood_placeholder(img)
             model_name = 'Color Baseline (placeholder)'
-
         mood = result['mood']
-
         return jsonify({
             'mood': mood,
             'confidence': result['confidence'],
@@ -311,37 +246,46 @@ def analyze():
 
 @app.route('/api/stylize', methods=['POST'])
 def stylize():
-    """Apply style transfer to image."""
     try:
         data = request.get_json()
         if not data or 'image' not in data:
             return jsonify({'error': 'No image provided'}), 400
-
         img = decode_image(data['image'])
         style_key = data.get('style', 'vangogh')
         method = data.get('method', 'naive')
         strength = float(data.get('strength', 1.0))
-
         style_path = f'models/style_weights/{style_key}.jpg'
         if not os.path.exists(style_path):
             return jsonify({'error': f'Style {style_key} not found'}), 404
-
         style_img = Image.open(style_path).convert('RGB')
         t0 = time.time()
-
         if method == 'kmeans':
             result = apply_kmeans_palette(img, style_img, strength=strength)
             model_name = 'Classical ML (K-Means Palette)'
-        elif method == 'naive':
-            result = apply_naive_lut(img, style_img, strength)
-            model_name = 'Naive (Color LUT)'
-        elif method == 'neural' and style_model:
-            result = apply_fast_nst(img, style_img, strength)
-            model_name = 'Deep Learning (Fast NST)'
+        elif method == 'neural':
+            # Neural style transfer runs in research environment
+            # Apply all 5 styles using K-Means for visual comparison
+            all_styles = {}
+            for sname, spath in [
+                ('monet', 'models/style_weights/monet.jpg'),
+                ('vangogh', 'models/style_weights/vangogh.jpg'),
+                ('kandinsky', 'models/style_weights/kandinsky.jpg'),
+                ('hokusai', 'models/style_weights/hokusai.jpg'),
+                ('munch', 'models/style_weights/munch.jpg'),
+            ]:
+                s_img = Image.open(spath).convert('RGB')
+                stylized = apply_kmeans_palette(img, s_img, strength=strength)
+                all_styles[sname] = encode_image(stylized)
+            return jsonify({
+                'neural_gallery': all_styles,
+                'style': style_key,
+                'method': 'neural',
+                'model': 'Neural Style Transfer Gallery (K-Means preview)',
+                'inference_time': round(time.time() - t0, 3)
+            })
         else:
             result = apply_naive_lut(img, style_img, strength)
-            model_name = 'Naive (Color LUT) — Neural not available'
-
+            model_name = 'Naive (Color LUT)'
         return jsonify({
             'stylized_image': encode_image(result),
             'style': style_key,
@@ -349,7 +293,6 @@ def stylize():
             'model': model_name,
             'inference_time': round(time.time() - t0, 3)
         })
-
     except Exception as e:
         logger.error(f'Stylize error: {e}')
         return jsonify({'error': str(e)}), 500
