@@ -1,4 +1,4 @@
-# MoodArt — AI-Powered Mood-Based Style Transfer
+# MoodArt (AI-Powered Mood-Based Style Transfer)
 
 > AIPI 540 Final Project — Upload a photo, detect its emotional mood, transform it into art.
 
