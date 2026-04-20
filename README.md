@@ -30,34 +30,40 @@
 ## Project Structure
 
 ```
-├── README.md
-├── requirements.txt          ← top-level for Railway
+moodart_app/
+└── moodart/
 ├── backend/
-│   ├── app.py                ← Flask API
-│   ├── requirements.txt
-│   └── railway.toml
+│ ├── app.py ← Flask API
+│ ├── requirements.txt
+│ ├── railway.toml
+│ └── models/
+│ ├── classifier/
+│ │ └── vgg_mood_best.pth ← trained VGG16 mood classifier
+│ └── style_weights/ ← downloaded style images
 ├── frontend/
-│   ├── package.json
-│   ├── public/index.html
-│   └── src/
-│       ├── App.js
-│       ├── App.css
-│       ├── index.js
-│       └── index.css
-├── models/
-│   ├── classifier/
-│   │   └── vgg_mood_best.pth ← trained VGG16 mood classifier
-│   └── style_weights/        ← downloaded style images
+│ ├── package.json
+│ ├── public/index.html
+│ └── src/
+│ ├── App.js
+│ ├── App.css
+│ ├── index.js
+│ └── index.css
+├── moodart_scripts/ ← ML pipeline (training + experiments)
+│ ├── data_prep.py
+│ ├── features.py
+│ ├── naive_baseline.py
+│ ├── classical_ml.py
+│ ├── deep_learning.py
+│ ├── evaluation.py
+│ ├── style_transfer.py
+│ └── pipeline.py
 ├── data/
-│   ├── raw/                  ← FER2013 dataset
-│   ├── processed/
-│   └── outputs/
-├── notebooks/                ← exploration notebooks
-├── scripts/
-│   ├── make_dataset.py
-│   ├── build_features.py
-│   └── model.py
+│ ├── raw/ ← FER2013 dataset
+│ ├── processed/
+│ └── outputs/
+├── notebooks/ ← exploration notebooks
 ├── setup.py
+├── README.md
 └── .gitignore
 ```
 
