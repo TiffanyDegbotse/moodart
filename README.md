@@ -30,8 +30,7 @@
 ## Project Structure
 
 ```
-moodart_app/
-└── moodart/
+moodart/
 ├── backend/
 │ ├── app.py ← Flask API
 │ ├── requirements.txt
