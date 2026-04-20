@@ -61,7 +61,6 @@ moodart/
 │ ├── processed/
 │ └── outputs/
 ├── notebooks/ ← exploration notebooks
-├── setup.py
 ├── README.md
 └── .gitignore
 ```
