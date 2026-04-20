@@ -202,6 +202,15 @@ def apply_kmeans_palette(content, style, n_colors=16, strength=1.0):
     transferred = np.clip(transferred, 0, 255).astype(np.uint8).reshape(h, w, 3)
     return Image.fromarray(transferred)
 
+def load_style_image(style_key, custom_b64=None):
+    """Load style image — from custom upload if provided, else from disk."""
+    if custom_b64:
+        return decode_image(custom_b64)
+    style_path = f'models/style_weights/{style_key}.jpg'
+    if not os.path.exists(style_path):
+        return None
+    return Image.open(style_path).convert('RGB')
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/api/health')
@@ -250,42 +259,49 @@ def stylize():
         data = request.get_json()
         if not data or 'image' not in data:
             return jsonify({'error': 'No image provided'}), 400
+
         img = decode_image(data['image'])
         style_key = data.get('style', 'vangogh')
         method = data.get('method', 'naive')
         strength = float(data.get('strength', 1.0))
-        style_path = f'models/style_weights/{style_key}.jpg'
-        if not os.path.exists(style_path):
+
+        # Custom style image — base64 from frontend if user swapped the painting
+        custom_style_b64 = data.get('custom_style_image', None)
+
+        style_img = load_style_image(style_key, custom_style_b64)
+        if style_img is None:
             return jsonify({'error': f'Style {style_key} not found'}), 404
-        style_img = Image.open(style_path).convert('RGB')
+
         t0 = time.time()
+
         if method == 'kmeans':
             result = apply_kmeans_palette(img, style_img, strength=strength)
             model_name = 'Classical ML (K-Means Palette)'
+
         elif method == 'neural':
-            # Neural style transfer runs in research environment
-            # Apply all 5 styles using K-Means for visual comparison
-            all_styles = {}
-            for sname, spath in [
-                ('monet', 'models/style_weights/monet.jpg'),
-                ('vangogh', 'models/style_weights/vangogh.jpg'),
-                ('kandinsky', 'models/style_weights/kandinsky.jpg'),
-                ('hokusai', 'models/style_weights/hokusai.jpg'),
-                ('munch', 'models/style_weights/munch.jpg'),
-            ]:
-                s_img = Image.open(spath).convert('RGB')
-                stylized = apply_kmeans_palette(img, s_img, strength=strength)
-                all_styles[sname] = encode_image(stylized)
+            # Neural style transfer uses pre-rendered gallery on frontend.
+            # If user has a custom style image, apply K-Means as a live preview.
+            if custom_style_b64:
+                result = apply_kmeans_palette(img, style_img, strength=strength)
+                return jsonify({
+                    'stylized_image': encode_image(result),
+                    'style': style_key,
+                    'method': 'neural',
+                    'model': 'Neural Style Transfer (custom painting preview)',
+                    'inference_time': round(time.time() - t0, 3)
+                })
+            # Default: tell frontend to use pre-rendered gallery
             return jsonify({
-                'neural_gallery': all_styles,
                 'style': style_key,
                 'method': 'neural',
-                'model': 'Neural Style Transfer Gallery (K-Means preview)',
-                'inference_time': round(time.time() - t0, 3)
+                'model': 'Neural Style Transfer Gallery',
+                'inference_time': 0
             })
+
         else:
             result = apply_naive_lut(img, style_img, strength)
             model_name = 'Naive (Color LUT)'
+
         return jsonify({
             'stylized_image': encode_image(result),
             'style': style_key,
@@ -293,6 +309,7 @@ def stylize():
             'model': model_name,
             'inference_time': round(time.time() - t0, 3)
         })
+
     except Exception as e:
         logger.error(f'Stylize error: {e}')
         return jsonify({'error': str(e)}), 500
