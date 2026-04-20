@@ -11,7 +11,7 @@ const STYLES = {
   vangogh:   { label: 'Van Gogh',  subtitle: 'Starry Night',    color: '#2d4a8a', mood: 'melancholic' },
   kandinsky: { label: 'Kandinsky', subtitle: 'Composition 7',   color: '#c94b2d', mood: 'energetic' },
   hokusai:   { label: 'Hokusai',   subtitle: 'The Great Wave',  color: '#4a7c8a', mood: 'calm' },
-  munch:     { label: 'Munch',     subtitle: 'The Scream',      color: '#8a6a2d', mood: 'dramatic' },
+  munch:     { label: 'Munch',     subtitle: 'The Island',      color: '#8a6a2d', mood: 'dramatic' },
 };
 
 const MOOD_COLORS = {
