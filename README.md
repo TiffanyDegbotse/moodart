@@ -79,25 +79,6 @@ npm install
 REACT_APP_API_URL=http://localhost:5000 npm start
 ```
 
----
-
-## Deploying to Railway
-
-### Backend service
-1. Create new Railway project
-2. Add service → GitHub repo → select `backend/` as root
-3. Set env vars: none required for basic deployment
-4. Railway auto-detects `railway.toml` and deploys
-
-### Frontend service
-1. Add another service in same project
-2. Select `frontend/` as root
-3. Set env var: `REACT_APP_API_URL=https://your-backend-url.railway.app`
-4. Build command: `npm run build`
-5. Start command: `npx serve -s build`
-
----
-
 ## API Endpoints
 
 | Endpoint | Method | Description |
