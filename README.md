@@ -1,10 +1,6 @@
 # MoodArt (AI-Powered Mood-Based Style Transfer)
 
-> AIPI 540 Final Project — Upload a photo, detect its emotional mood, transform it into art.
-
-## Live Demo
-- **Frontend**: Deployed on Railway
-- **Backend API**: Deployed on Railway
+> Upload a photo, detect its emotional mood, transform it into art.
 
 ---
 
